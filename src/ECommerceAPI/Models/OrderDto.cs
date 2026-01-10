@@ -1,4 +1,6 @@
-﻿public class OrderDto
+﻿namespace ECommerceAPI.Models;
+
+public class OrderDto
 {
 	public int? Id { get; set; }
 	public string? AmazonOrderId { get; set; }

@@ -1,6 +1,5 @@
 ﻿using ECommerceAPI.Models;
 using ECommerceAPI.Services;
-using ECommerceAPI.src.ECommerceAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -25,11 +24,11 @@ public class BuyerController : ControllerBase
 		return int.Parse(userIdClaim ?? "0");
 	}
 
-	/// <summary>
-	/// Search for products by keyword
-	/// </summary>
+	// ===================== SEARCH PRODUCTS =====================
+
 	[HttpGet("search")]
-	public async Task<IActionResult> SearchProducts([FromQuery] string keyword,
+	public async Task<IActionResult> SearchProducts(
+		[FromQuery] string keyword,
 		[FromQuery] string? category = null,
 		[FromQuery] int page = 1,
 		[FromQuery] int pageSize = 10)
@@ -48,7 +47,15 @@ public class BuyerController : ControllerBase
 			};
 
 			var products = await _buyerService.SearchProductsAsync(searchRequest);
-			return Ok(new { success = true, data = products, page, pageSize, total = products.Count });
+
+			return Ok(new
+			{
+				success = true,
+				data = products,
+				page,
+				pageSize,
+				total = products.Count
+			});
 		}
 		catch (Exception ex)
 		{
@@ -56,9 +63,8 @@ public class BuyerController : ControllerBase
 		}
 	}
 
-	/// <summary>
-	/// Get product details by ASIN
-	/// </summary>
+	// ===================== PRODUCT DETAILS =====================
+
 	[HttpGet("product/{asin}")]
 	public async Task<IActionResult> GetProductDetails(string asin)
 	{
@@ -77,9 +83,8 @@ public class BuyerController : ControllerBase
 		}
 	}
 
-	/// <summary>
-	/// Generate Amazon checkout URL (redirects buyer to Amazon)
-	/// </summary>
+	// ===================== ADD TO CART =====================
+
 	[HttpPost("add-to-cart")]
 	public IActionResult AddToCart([FromBody] AddToCartRequest request)
 	{
@@ -100,9 +105,8 @@ public class BuyerController : ControllerBase
 		}
 	}
 
-	/// <summary>
-	/// Get all orders for the logged-in buyer
-	/// </summary>
+	// ===================== BUYER ORDERS =====================
+
 	[HttpGet("orders")]
 	public async Task<IActionResult> GetOrders()
 	{

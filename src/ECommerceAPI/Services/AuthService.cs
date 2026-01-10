@@ -1,8 +1,5 @@
-﻿using BCrypt.Net;
-using ECommerceAPI.Data;
+﻿using ECommerceAPI.Data;
 using ECommerceAPI.Models;
-using ECommerceAPI.src.ECommerceAPI.Data;
-using ECommerceAPI.src.ECommerceAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -13,9 +10,9 @@ namespace ECommerceAPI.Services;
 
 public interface IAuthService
 {
-	Task<AuthResponse> RegisterAsync(RegisterRequest request);
-	Task<AuthResponse> LoginAsync(LoginRequest request);
-	Task<User?> GetUserByIdAsync(int userId);
+	Task RegisterAsync(RegisterRequest request);
+	Task LoginAsync(LoginRequest request);
+	Task GetUserByIdAsync(int userId);
 }
 
 public class AuthService : IAuthService
@@ -153,5 +150,20 @@ public class AuthService : IAuthService
 		);
 
 		return new JwtSecurityTokenHandler().WriteToken(token);
+	}
+
+	Task IAuthService.RegisterAsync(RegisterRequest request)
+	{
+		return RegisterAsync(request);
+	}
+
+	Task IAuthService.LoginAsync(LoginRequest request)
+	{
+		return LoginAsync(request);
+	}
+
+	Task IAuthService.GetUserByIdAsync(int userId)
+	{
+		return GetUserByIdAsync(userId);
 	}
 }

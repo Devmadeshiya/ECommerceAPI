@@ -1,4 +1,6 @@
-﻿public class SearchRequest
+﻿namespace ECommerceAPI.Models;
+
+public class SearchRequest
 {
 	public string Keyword { get; set; } = string.Empty;
 	public string? Category { get; set; }

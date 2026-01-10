@@ -1,5 +1,4 @@
-﻿using ECommerceAPI.src.ECommerceAPI.Models;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace ECommerceAPI.Models;
 
@@ -7,6 +6,9 @@ public class Product
 {
 	[Key]
 	public int Id { get; set; }
+
+	[Required]
+	public int SellerId { get; set; }
 
 	[Required]
 	public string ASIN { get; set; } = string.Empty;
@@ -24,12 +26,9 @@ public class Product
 
 	public int Quantity { get; set; }
 
-	public int? SellerId { get; set; }
-	public User? Seller { get; set; }
+	public bool IsActive { get; set; } = true;
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-	public DateTime? UpdatedAt { get; set; }
-
-	public bool IsActive { get; set; } = true;
+	public DateTime UpdatedAt { get; internal set; }
+	public object Seller { get; internal set; }
 }

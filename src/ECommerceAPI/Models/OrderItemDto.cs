@@ -1,4 +1,6 @@
-﻿public class OrderItemDto
+﻿namespace ECommerceAPI.Models;
+
+public class OrderItemDto
 {
 	public string ASIN { get; set; } = string.Empty;
 	public string ProductTitle { get; set; } = string.Empty;

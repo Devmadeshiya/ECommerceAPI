@@ -1,5 +1,6 @@
-﻿using ECommerceAPI.Models;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace ECommerceAPI.Models;
 
 public class SellerProfile
 {
@@ -9,10 +10,8 @@ public class SellerProfile
 	public int UserId { get; set; }
 	public User User { get; set; } = null!;
 
-	public string? AmazonSellerId { get; set; }
-	public string? RefreshToken { get; set; }
-	public string? MarketplaceId { get; set; }
 	public string? StoreName { get; set; }
+	public string? AmazonSellerId { get; set; }
 
-	public DateTime? ConnectedAt { get; set; }
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
