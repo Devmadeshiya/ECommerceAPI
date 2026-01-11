@@ -15,8 +15,9 @@ public class AuthController : ControllerBase
 		_authService = authService;
 	}
 
-	// ===================== REGISTER =====================
-
+	/// <summary>
+	/// Register a new user (Seller or Buyer)
+	/// </summary>
 	[HttpPost("register")]
 	public async Task<IActionResult> Register([FromBody] RegisterRequest request)
 	{
@@ -29,25 +30,26 @@ public class AuthController : ControllerBase
 			return BadRequest(new { message = "Role must be either 'Seller' or 'Buyer'" });
 		}
 
-		await _authService.RegisterAsync(request);
-		// You may need to update the rest of the logic here, since RegisterAsync returns void.
-		// For example, you might want to return a status code or message indicating success.
-		return Ok(new { Success = true, Message = "Registration successful." });
+		var result = await _authService.RegisterAsync(request);
+
+		if (!result.Success)
+			return BadRequest(result);
+
+		return Ok(result);
 	}
 
-	// ===================== LOGIN =====================
-
+	/// <summary>
+	/// Login with email and password
+	/// </summary>
 	[HttpPost("login")]
 	public async Task<IActionResult> Login([FromBody] LoginRequest request)
 	{
 		if (!ModelState.IsValid)
 			return BadRequest(ModelState);
 
-		await _authService.LoginAsync(request).ConfigureAwait(false);
-		// Handle the result or response here if needed
-		var result = (object)null; // Replace with actual result if LoginAsync returns a value in the future
+		var result = await _authService.LoginAsync(request);
 
-		if (result == null || !(bool)result.GetType().GetProperty("Success")?.GetValue(result))
+		if (!result.Success)
 			return Unauthorized(result);
 
 		return Ok(result);
