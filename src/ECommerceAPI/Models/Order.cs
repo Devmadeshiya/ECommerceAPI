@@ -1,5 +1,6 @@
-﻿using ECommerceAPI.src.ECommerceAPI.Models;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace ECommerceAPI.Models;
 
 public class Order
 {
@@ -11,18 +12,11 @@ public class Order
 
 	public string? AmazonOrderId { get; set; }
 
-	[Required]
-	public string Status { get; set; } = "Pending"; // Pending, Processing, Shipped, Delivered, Cancelled
+	public string Status { get; set; } = "Pending";
 
 	public decimal TotalAmount { get; set; }
 
 	public DateTime OrderDate { get; set; } = DateTime.UtcNow;
-
-	public DateTime? ShippedDate { get; set; }
-
-	public DateTime? DeliveredDate { get; set; }
-
-	public string? ShippingAddress { get; set; }
 
 	public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
 }

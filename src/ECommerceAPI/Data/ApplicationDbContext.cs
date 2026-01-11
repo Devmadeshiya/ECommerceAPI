@@ -1,5 +1,4 @@
 ﻿using ECommerceAPI.Models;
-using ECommerceAPI.src.ECommerceAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace ECommerceAPI.Data;
@@ -11,11 +10,11 @@ public class ApplicationDbContext : DbContext
 	{
 	}
 
-	public DbSet<User> Users { get; set; }
-	public DbSet<SellerProfile> SellerProfiles { get; set; }
-	public DbSet<Product> Products { get; set; }
-	public DbSet<Order> Orders { get; set; }
-	public DbSet<OrderItem> OrderItems { get; set; }
+	public DbSet<User> Users { get; set; } = null!;
+	public DbSet<SellerProfile> SellerProfiles { get; set; } = null!;
+	public DbSet<Product> Products { get; set; } = null!;
+	public DbSet<Order> Orders { get; set; } = null!;
+	public DbSet<OrderItem> OrderItems { get; set; } = null!;
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
@@ -24,14 +23,17 @@ public class ApplicationDbContext : DbContext
 		// User configuration
 		modelBuilder.Entity<User>(entity =>
 		{
-			entity.HasIndex(e => e.Email).IsUnique();
-			entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
-			entity.Property(e => e.Role).IsRequired().HasMaxLength(50);
+			entity.HasKey(u => u.Id);
+			entity.HasIndex(u => u.Email).IsUnique();
+			entity.Property(u => u.Email).IsRequired().HasMaxLength(256);
+			entity.Property(u => u.Role).IsRequired().HasMaxLength(50);
+			entity.Property(u => u.PasswordHash).IsRequired();
 		});
 
 		// SellerProfile configuration
 		modelBuilder.Entity<SellerProfile>(entity =>
 		{
+			entity.HasKey(sp => sp.Id);
 			entity.HasOne(sp => sp.User)
 				.WithOne(u => u.SellerProfile)
 				.HasForeignKey<SellerProfile>(sp => sp.UserId)
@@ -39,12 +41,15 @@ public class ApplicationDbContext : DbContext
 		});
 
 		// Product configuration
-		modelBuilder.Entity<Product>(entity =>
+		modelBuilder.Entity<Product>(static entity =>
 		{
-			entity.HasIndex(e => e.ASIN);
-			entity.Property(e => e.Price).HasPrecision(18, 2);
+			entity.HasKey(p => p.Id);
+			entity.HasIndex(p => p.ASIN);
+			entity.Property(p => p.ASIN).IsRequired().HasMaxLength(20);
+			entity.Property(p => p.Title).IsRequired().HasMaxLength(500);
+			entity.Property(p => p.Price).HasPrecision(18, 2);
 
-			entity.HasOne(p => p.Seller)
+			entity.HasOne<SellerProfile>()
 				.WithMany()
 				.HasForeignKey(p => p.SellerId)
 				.OnDelete(DeleteBehavior.SetNull);
@@ -53,7 +58,9 @@ public class ApplicationDbContext : DbContext
 		// Order configuration
 		modelBuilder.Entity<Order>(entity =>
 		{
-			entity.Property(e => e.TotalAmount).HasPrecision(18, 2);
+			entity.HasKey(o => o.Id);
+			entity.Property(o => o.Status).IsRequired().HasMaxLength(50);
+			entity.Property(o => o.TotalAmount).HasPrecision(18, 2);
 
 			entity.HasOne(o => o.Buyer)
 				.WithMany(u => u.Orders)
@@ -69,8 +76,11 @@ public class ApplicationDbContext : DbContext
 		// OrderItem configuration
 		modelBuilder.Entity<OrderItem>(entity =>
 		{
-			entity.Property(e => e.UnitPrice).HasPrecision(18, 2);
-			entity.Property(e => e.TotalPrice).HasPrecision(18, 2);
+			entity.HasKey(oi => oi.Id);
+			entity.Property(oi => oi.ASIN).IsRequired().HasMaxLength(20);
+			entity.Property(oi => oi.ProductTitle).IsRequired().HasMaxLength(500);
+			entity.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
+			entity.Property(oi => oi.TotalPrice).HasPrecision(18, 2);
 		});
 	}
 }

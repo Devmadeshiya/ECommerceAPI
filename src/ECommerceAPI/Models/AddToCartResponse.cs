@@ -1,4 +1,6 @@
-﻿public class AddToCartResponse
+﻿namespace ECommerceAPI.Models;
+
+public class AddToCartResponse
 {
 	public bool Success { get; set; }
 	public string Message { get; set; } = string.Empty;

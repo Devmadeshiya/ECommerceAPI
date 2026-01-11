@@ -1,4 +1,6 @@
-﻿public class ProductDto
+﻿namespace ECommerceAPI.Models;
+
+public class ProductDto
 {
 	public int? Id { get; set; }
 	public string ASIN { get; set; } = string.Empty;

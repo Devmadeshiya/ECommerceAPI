@@ -1,7 +1,5 @@
 using ECommerceAPI.Data;
 using ECommerceAPI.Services;
-using ECommerceAPI.src.ECommerceAPI.Data;
-using ECommerceAPI.src.ECommerceAPI.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -19,7 +17,20 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
+var secretKey = jwtSettings["Secret"];
+
+// Debug output
+Console.WriteLine($"[DEBUG] JWT Secret exists: {!string.IsNullOrEmpty(secretKey)}");
+Console.WriteLine($"[DEBUG] JWT Issuer: {jwtSettings["Issuer"]}");
+Console.WriteLine($"[DEBUG] JWT Audience: {jwtSettings["Audience"]}");
+
+// Handle missing JWT Secret
+if (string.IsNullOrEmpty(secretKey))
+{
+	Console.WriteLine("[WARNING] JWT Secret not found in appsettings.json!");
+	Console.WriteLine("[WARNING] Using default secret for DEVELOPMENT only. DO NOT use in production!");
+	secretKey = "YourSuperSecretKeyThatIsAtLeast32CharactersLong!@#$%";
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -34,8 +45,8 @@ builder.Services.AddAuthentication(options =>
 		ValidateAudience = true,
 		ValidateLifetime = true,
 		ValidateIssuerSigningKey = true,
-		ValidIssuer = jwtSettings["Issuer"],
-		ValidAudience = jwtSettings["Audience"],
+		ValidIssuer = jwtSettings["Issuer"] ?? "ECommerceAPI",
+		ValidAudience = jwtSettings["Audience"] ?? "ECommerceClient",
 		IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
 		ClockSkew = TimeSpan.Zero
 	};
@@ -104,11 +115,11 @@ using (var scope = app.Services.CreateScope())
 	{
 		var context = services.GetRequiredService<ApplicationDbContext>();
 		context.Database.Migrate();
-		Console.WriteLine("Database migration completed successfully.");
+		Console.WriteLine("[SUCCESS] Database migration completed successfully.");
 	}
 	catch (Exception ex)
 	{
-		Console.WriteLine($"An error occurred while migrating the database: {ex.Message}");
+		Console.WriteLine($"[ERROR] An error occurred while migrating the database: {ex.Message}");
 	}
 }
 
@@ -119,7 +130,7 @@ if (app.Environment.IsDevelopment())
 	app.UseSwaggerUI(c =>
 	{
 		c.SwaggerEndpoint("/swagger/v1/swagger.json", "E-Commerce API V1");
-		c.RoutePrefix = string.Empty; // Set Swagger UI at the app's root
+		c.RoutePrefix = string.Empty;
 	});
 }
 
@@ -132,7 +143,11 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+Console.WriteLine("========================================");
 Console.WriteLine("E-Commerce API is running...");
-Console.WriteLine("Swagger UI available at: https://localhost:{port}");
+Console.WriteLine($"Environment: {app.Environment.EnvironmentName}");
+Console.WriteLine("Swagger UI: https://localhost:7049");
+Console.WriteLine("API Base: https://localhost:7049/api");
+Console.WriteLine("========================================");
 
 app.Run();

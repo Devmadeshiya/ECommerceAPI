@@ -1,8 +1,6 @@
 ﻿using BCrypt.Net;
 using ECommerceAPI.Data;
 using ECommerceAPI.Models;
-using ECommerceAPI.src.ECommerceAPI.Data;
-using ECommerceAPI.src.ECommerceAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -31,6 +29,7 @@ public class AuthService : IAuthService
 
 	public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
 	{
+		// Check if user already exists
 		if (await _context.Users.AnyAsync(u => u.Email == request.Email))
 		{
 			return new AuthResponse
@@ -40,19 +39,23 @@ public class AuthService : IAuthService
 			};
 		}
 
+		// Hash the password
 		var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
+		// Create new user
 		var user = new User
 		{
 			Email = request.Email,
 			PasswordHash = passwordHash,
 			Role = request.Role,
 			FullName = request.FullName,
-			CreatedAt = DateTime.UtcNow
+			CreatedAt = DateTime.UtcNow,
+			IsActive = true
 		};
 
 		_context.Users.Add(user);
 
+		// If Seller, create SellerProfile
 		if (request.Role.Equals("Seller", StringComparison.OrdinalIgnoreCase))
 		{
 			var sellerProfile = new SellerProfile
@@ -64,6 +67,7 @@ public class AuthService : IAuthService
 
 		await _context.SaveChangesAsync();
 
+		// Generate JWT token
 		var token = GenerateJwtToken(user);
 
 		return new AuthResponse
@@ -83,10 +87,12 @@ public class AuthService : IAuthService
 
 	public async Task<AuthResponse> LoginAsync(LoginRequest request)
 	{
+		// Find user by email
 		var user = await _context.Users
 			.Include(u => u.SellerProfile)
 			.FirstOrDefaultAsync(u => u.Email == request.Email);
 
+		// Check if user exists and password is correct
 		if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
 		{
 			return new AuthResponse
@@ -96,6 +102,7 @@ public class AuthService : IAuthService
 			};
 		}
 
+		// Check if account is active
 		if (!user.IsActive)
 		{
 			return new AuthResponse
@@ -105,6 +112,7 @@ public class AuthService : IAuthService
 			};
 		}
 
+		// Generate JWT token
 		var token = GenerateJwtToken(user);
 
 		return new AuthResponse

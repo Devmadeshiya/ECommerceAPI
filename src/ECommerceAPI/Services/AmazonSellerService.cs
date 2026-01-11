@@ -1,12 +1,8 @@
 ﻿using ECommerceAPI.Data;
 using ECommerceAPI.Models;
-using ECommerceAPI.src.ECommerceAPI.Data;
-using ECommerceAPI.src.ECommerceAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using RestSharp;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace ECommerceAPI.Services;
 
