@@ -1,19 +1,26 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 
-namespace ECommerceAPI.Data;
-
-public class ApplicationDbContextFactory
-	: IDesignTimeDbContextFactory<ApplicationDbContext>
+namespace ECommerceAPI.Data
 {
-	public ApplicationDbContext CreateDbContext(string[] args)
+	public class ApplicationDbContextFactory
+		: IDesignTimeDbContextFactory<ApplicationDbContext>
 	{
-		var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+		public ApplicationDbContext CreateDbContext(string[] args)
+		{
+			var config = new ConfigurationBuilder()
+				.SetBasePath(Directory.GetCurrentDirectory())
+				.AddJsonFile("appsettings.json", optional: false)
+				.AddJsonFile("appsettings.Development.json", optional: true)
+				.Build();
 
-		optionsBuilder.UseSqlServer(
-			"Server=DESKTOP-410L5DQ\\LOCALHOST;Database=ECommerceDB;User Id=sa;Password=Esoft@1234;TrustServerCertificate=True;"
-		);
+			var connectionString = config.GetConnectionString("DefaultConnection");
 
-		return new ApplicationDbContext(optionsBuilder.Options);
+			var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+			optionsBuilder.UseSqlServer(connectionString);
+
+			return new ApplicationDbContext(optionsBuilder.Options);
+		}
 	}
 }

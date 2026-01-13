@@ -1,3 +1,4 @@
+﻿using ECommerceAPI.Amazon;
 using ECommerceAPI.Data;
 using ECommerceAPI.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -8,35 +9,42 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container
+// ================= BASIC DEBUG =================
+Console.WriteLine("========================================");
+Console.WriteLine($"Environment: {builder.Environment.EnvironmentName}");
+Console.WriteLine($"Directory: {Directory.GetCurrentDirectory()}");
+Console.WriteLine("========================================");
+
+// ================= SERVICES =================
 builder.Services.AddControllers();
 
-// Configure Database
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-	options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// Configure JWT Authentication
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["Secret"];
-
-// Debug output
-Console.WriteLine($"[DEBUG] JWT Secret exists: {!string.IsNullOrEmpty(secretKey)}");
-Console.WriteLine($"[DEBUG] JWT Issuer: {jwtSettings["Issuer"]}");
-Console.WriteLine($"[DEBUG] JWT Audience: {jwtSettings["Audience"]}");
-
-// Handle missing JWT Secret
-if (string.IsNullOrEmpty(secretKey))
+// ================= DATABASE =================
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
 {
-	Console.WriteLine("[WARNING] JWT Secret not found in appsettings.json!");
-	Console.WriteLine("[WARNING] Using default secret for DEVELOPMENT only. DO NOT use in production!");
-	secretKey = "YourSuperSecretKeyThatIsAtLeast32CharactersLong!@#$%";
+	Console.WriteLine("[WARNING] DefaultConnection not found, using fallback");
+	connectionString =
+		"Server=DESKTOP-410L5DQ\\LOCALHOST;Database=ECommerceDB;User Id=sa;Password=Esoft@1234;TrustServerCertificate=True;Encrypt=False;";
 }
 
-builder.Services.AddAuthentication(options =>
+
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+	options.UseSqlServer(connectionString));
+
+// ================= JWT =================
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+
+var secret = jwtSettings["Secret"];
+var issuer = jwtSettings["Issuer"];
+var audience = jwtSettings["Audience"];
+
+if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
 {
-	options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-	options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
+	throw new Exception("JWT Secret not configured or too short");
+}
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
 	options.TokenValidationParameters = new TokenValidationParameters
@@ -45,48 +53,55 @@ builder.Services.AddAuthentication(options =>
 		ValidateAudience = true,
 		ValidateLifetime = true,
 		ValidateIssuerSigningKey = true,
-		ValidIssuer = jwtSettings["Issuer"] ?? "ECommerceAPI",
-		ValidAudience = jwtSettings["Audience"] ?? "ECommerceClient",
-		IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+		ValidIssuer = issuer,
+		ValidAudience = audience,
+		IssuerSigningKey = new SymmetricSecurityKey(
+			Encoding.UTF8.GetBytes(secret)),
 		ClockSkew = TimeSpan.Zero
 	};
 });
 
-// Register Services
+// ================= AMAZON =================
+builder.Services.Configure<AmazonSettings>(
+	builder.Configuration.GetSection("Amazon"));
+
+builder.Services.AddHttpClient<AmazonTokenService>();
+builder.Services.AddHttpClient<AmazonSpApiService>();
+
+builder.Services.AddScoped<AmazonOAuthService>();
+builder.Services.AddScoped<AmazonTokenService>();
+builder.Services.AddScoped<AmazonSpApiService>();
+builder.Services.AddScoped<AwsSigV4Signer>();
+
+// ================= APP SERVICES =================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAmazonSellerService, AmazonSellerService>();
 builder.Services.AddScoped<IAmazonBuyerService, AmazonBuyerService>();
 
-// Configure CORS
+// ================= CORS =================
 builder.Services.AddCors(options =>
 {
-	options.AddPolicy("AllowAll", policy =>
-	{
-		policy.AllowAnyOrigin()
-			  .AllowAnyMethod()
-			  .AllowAnyHeader();
-	});
+	options.AddPolicy("AllowAll", p =>
+		p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
-// Configure Swagger
+// ================= SWAGGER =================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
 	c.SwaggerDoc("v1", new OpenApiInfo
 	{
-		Title = "E-Commerce API with Amazon Integration",
-		Version = "v1",
-		Description = "API for managing sellers and buyers with Amazon SP-API and PAAPI integration"
+		Title = "E-Commerce API",
+		Version = "v1"
 	});
 
-	// Add JWT Authentication to Swagger
 	c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
 	{
-		Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token",
 		Name = "Authorization",
-		In = ParameterLocation.Header,
 		Type = SecuritySchemeType.ApiKey,
-		Scheme = "Bearer"
+		Scheme = "Bearer",
+		In = ParameterLocation.Header,
+		Description = "Bearer {token}"
 	});
 
 	c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -107,47 +122,26 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// Apply migrations and seed database
+// ================= MIGRATION =================
 using (var scope = app.Services.CreateScope())
 {
-	var services = scope.ServiceProvider;
-	try
-	{
-		var context = services.GetRequiredService<ApplicationDbContext>();
-		context.Database.Migrate();
-		Console.WriteLine("[SUCCESS] Database migration completed successfully.");
-	}
-	catch (Exception ex)
-	{
-		Console.WriteLine($"[ERROR] An error occurred while migrating the database: {ex.Message}");
-	}
+	var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+	db.Database.Migrate();
 }
 
-// Configure the HTTP request pipeline
-if (app.Environment.IsDevelopment())
+// ================= MIDDLEWARE =================
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-	app.UseSwagger();
-	app.UseSwaggerUI(c =>
-	{
-		c.SwaggerEndpoint("/swagger/v1/swagger.json", "E-Commerce API V1");
-		c.RoutePrefix = string.Empty;
-	});
-}
+	c.SwaggerEndpoint("/swagger/v1/swagger.json", "E-Commerce API v1");
+	c.RoutePrefix = string.Empty;
+});
 
 app.UseHttpsRedirection();
-
 app.UseCors("AllowAll");
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
-Console.WriteLine("========================================");
-Console.WriteLine("E-Commerce API is running...");
-Console.WriteLine($"Environment: {app.Environment.EnvironmentName}");
-Console.WriteLine("Swagger UI: https://localhost:7049");
-Console.WriteLine("API Base: https://localhost:7049/api");
-Console.WriteLine("========================================");
-
+Console.WriteLine("API STARTED SUCCESSFULLY");
 app.Run();
