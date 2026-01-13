@@ -15,6 +15,7 @@ public class ApplicationDbContext : DbContext
 	public DbSet<Product> Products { get; set; } = null!;
 	public DbSet<Order> Orders { get; set; } = null!;
 	public DbSet<OrderItem> OrderItems { get; set; } = null!;
+	public object Sellers { get; internal set; }
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
@@ -40,8 +41,8 @@ public class ApplicationDbContext : DbContext
 				.OnDelete(DeleteBehavior.Cascade);
 		});
 
-		// Product configuration
-		modelBuilder.Entity<Product>(static entity =>
+		// Product configuration - FIXED
+		modelBuilder.Entity<Product>(entity =>
 		{
 			entity.HasKey(p => p.Id);
 			entity.HasIndex(p => p.ASIN);
@@ -49,10 +50,12 @@ public class ApplicationDbContext : DbContext
 			entity.Property(p => p.Title).IsRequired().HasMaxLength(500);
 			entity.Property(p => p.Price).HasPrecision(18, 2);
 
+			// Fixed: Proper foreign key relationship with SellerProfile
 			entity.HasOne<SellerProfile>()
 				.WithMany()
 				.HasForeignKey(p => p.SellerId)
-				.OnDelete(DeleteBehavior.SetNull);
+				.OnDelete(DeleteBehavior.Restrict) // Changed from SetNull to Restrict
+				.IsRequired();
 		});
 
 		// Order configuration

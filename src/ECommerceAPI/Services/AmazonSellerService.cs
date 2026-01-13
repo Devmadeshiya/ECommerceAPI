@@ -40,6 +40,13 @@ public class AmazonSellerService : IAmazonSellerService
 
 	public async Task<List<ProductDto>> GetProductsAsync(int sellerId)
 	{
+		// Verify seller exists
+		var sellerProfile = await _context.SellerProfiles
+			.FirstOrDefaultAsync(sp => sp.Id == sellerId);
+
+		if (sellerProfile == null)
+			throw new Exception("Seller profile not found");
+
 		var products = await _context.Products
 			.Where(p => p.SellerId == sellerId && p.IsActive)
 			.Select(p => new ProductDto
@@ -60,6 +67,20 @@ public class AmazonSellerService : IAmazonSellerService
 
 	public async Task<ProductDto> AddProductAsync(int sellerId, ProductDto productDto)
 	{
+		// Verify seller exists by getting the SellerProfile ID from User ID
+		var sellerProfile = await _context.SellerProfiles
+			.FirstOrDefaultAsync(sp => sp.UserId == sellerId);
+
+		if (sellerProfile == null)
+			throw new Exception("Seller profile not found");
+
+		// Check if ASIN already exists
+		var existingProduct = await _context.Products
+			.FirstOrDefaultAsync(p => p.ASIN == productDto.ASIN);
+
+		if (existingProduct != null)
+			throw new Exception("Product with this ASIN already exists");
+
 		var product = new Product
 		{
 			ASIN = productDto.ASIN,
@@ -69,8 +90,9 @@ public class AmazonSellerService : IAmazonSellerService
 			ImageUrl = productDto.ImageUrl,
 			Category = productDto.Category,
 			Quantity = productDto.Quantity,
-			SellerId = sellerId,
+			SellerId = sellerProfile.Id, // Use SellerProfile.Id, not User.Id
 			CreatedAt = DateTime.UtcNow,
+			UpdatedAt = DateTime.UtcNow,
 			IsActive = true
 		};
 
@@ -83,11 +105,18 @@ public class AmazonSellerService : IAmazonSellerService
 
 	public async Task<ProductDto> UpdateProductAsync(int sellerId, int productId, ProductDto productDto)
 	{
+		// Get seller profile
+		var sellerProfile = await _context.SellerProfiles
+			.FirstOrDefaultAsync(sp => sp.UserId == sellerId);
+
+		if (sellerProfile == null)
+			throw new Exception("Seller profile not found");
+
 		var product = await _context.Products
-			.FirstOrDefaultAsync(p => p.Id == productId && p.SellerId == sellerId);
+			.FirstOrDefaultAsync(p => p.Id == productId && p.SellerId == sellerProfile.Id);
 
 		if (product == null)
-			throw new Exception("Product not found");
+			throw new Exception("Product not found or you don't have permission to update it");
 
 		product.Title = productDto.Title;
 		product.Description = productDto.Description;
@@ -105,13 +134,21 @@ public class AmazonSellerService : IAmazonSellerService
 
 	public async Task<bool> DeleteProductAsync(int sellerId, int productId)
 	{
+		// Get seller profile
+		var sellerProfile = await _context.SellerProfiles
+			.FirstOrDefaultAsync(sp => sp.UserId == sellerId);
+
+		if (sellerProfile == null)
+			return false;
+
 		var product = await _context.Products
-			.FirstOrDefaultAsync(p => p.Id == productId && p.SellerId == sellerId);
+			.FirstOrDefaultAsync(p => p.Id == productId && p.SellerId == sellerProfile.Id);
 
 		if (product == null)
 			return false;
 
 		product.IsActive = false;
+		product.UpdatedAt = DateTime.UtcNow;
 		await _context.SaveChangesAsync();
 
 		return true;
@@ -119,10 +156,17 @@ public class AmazonSellerService : IAmazonSellerService
 
 	public async Task<List<OrderDto>> GetOrdersAsync(int sellerId)
 	{
+		// Get seller profile
+		var sellerProfile = await _context.SellerProfiles
+			.FirstOrDefaultAsync(sp => sp.UserId == sellerId);
+
+		if (sellerProfile == null)
+			return new List<OrderDto>();
+
 		var orders = await _context.Orders
 			.Include(o => o.OrderItems)
 			.Where(o => o.OrderItems.Any(oi =>
-				_context.Products.Any(p => p.ASIN == oi.ASIN && p.SellerId == sellerId)))
+				_context.Products.Any(p => p.ASIN == oi.ASIN && p.SellerId == sellerProfile.Id)))
 			.Select(o => new OrderDto
 			{
 				Id = o.Id,
@@ -130,14 +174,16 @@ public class AmazonSellerService : IAmazonSellerService
 				Status = o.Status,
 				TotalAmount = o.TotalAmount,
 				OrderDate = o.OrderDate,
-				Items = o.OrderItems.Select(oi => new OrderItemDto
-				{
-					ASIN = oi.ASIN,
-					ProductTitle = oi.ProductTitle,
-					UnitPrice = oi.UnitPrice,
-					Quantity = oi.Quantity,
-					TotalPrice = oi.TotalPrice
-				}).ToList()
+				Items = o.OrderItems
+					.Where(oi => _context.Products.Any(p => p.ASIN == oi.ASIN && p.SellerId == sellerProfile.Id))
+					.Select(oi => new OrderItemDto
+					{
+						ASIN = oi.ASIN,
+						ProductTitle = oi.ProductTitle,
+						UnitPrice = oi.UnitPrice,
+						Quantity = oi.Quantity,
+						TotalPrice = oi.TotalPrice
+					}).ToList()
 			})
 			.ToListAsync();
 
