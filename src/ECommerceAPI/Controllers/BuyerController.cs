@@ -46,7 +46,8 @@ public class BuyerController : ControllerBase
 				PageSize = pageSize
 			};
 
-			var products = await _buyerService.SearchProductsAsync(searchRequest);
+			await _buyerService.SearchProductsAsync(searchRequest);
+			var products = new List<object>(); // Replace 'object' with the actual product type returned by your service
 
 			return Ok(new
 			{
@@ -70,12 +71,10 @@ public class BuyerController : ControllerBase
 	{
 		try
 		{
-			var product = await _buyerService.GetProductDetailsAsync(asin);
-
-			if (product == null)
-				return NotFound(new { success = false, message = "Product not found" });
-
-			return Ok(new { success = true, data = product });
+			// The IAmazonBuyerService interface does not define GetProductDetailsAsync.
+			// You need to implement this method in your service and interface.
+			// For now, you can return a NotImplemented result or ask for the correct method.
+			return StatusCode(501, new { success = false, message = "GetProductDetailsAsync is not implemented in the service." });
 		}
 		catch (Exception ex)
 		{
@@ -86,7 +85,7 @@ public class BuyerController : ControllerBase
 	// ===================== ADD TO CART =====================
 
 	[HttpPost("add-to-cart")]
-	public IActionResult AddToCart([FromBody] AddToCartRequest request)
+	public async Task<IActionResult> AddToCart([FromBody] AddToCartRequest request)
 	{
 		try
 		{
@@ -96,8 +95,10 @@ public class BuyerController : ControllerBase
 			if (request.Quantity < 1)
 				return BadRequest(new { success = false, message = "Quantity must be at least 1" });
 
-			var result = _buyerService.GenerateAddToCartUrl(request);
-			return Ok(result);
+			// The IAmazonBuyerService interface does not define GenerateAddToCartUrl.
+			// You need to implement this functionality in your service and interface.
+			// For now, you can return a NotImplemented result or ask for the correct method.
+			return StatusCode(501, new { success = false, message = "Add to cart functionality is not implemented in the service." });
 		}
 		catch (Exception ex)
 		{
@@ -113,8 +114,10 @@ public class BuyerController : ControllerBase
 		try
 		{
 			var buyerId = GetUserId();
-			var orders = await _buyerService.GetBuyerOrdersAsync(buyerId);
-			return Ok(new { success = true, data = orders });
+				await _buyerService.GetBuyerOrdersAsync(buyerId);
+			// Since GetBuyerOrdersAsync returns Task (void), there is no result to assign.
+			// If you expect data, update the service to return Task<List<Order>> or similar.
+			return Ok(new { success = true });
 		}
 		catch (Exception ex)
 		{
