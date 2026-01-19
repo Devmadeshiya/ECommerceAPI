@@ -1,109 +1,46 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
 
-namespace ECommerceAPI.Amazon;
-
-public class AwsSigV4Signer
+namespace ECommerceAPI.Amazon
 {
-	private const string Algorithm = "AWS4-HMAC-SHA256";
-	private const string Service = "execute-api";
-
-	public void Sign(
-		HttpRequestMessage request,
-		string accessKey,
-		string secretKey,
-		string region)
+	public class AwsSigV4Signer
 	{
-		var utcNow = DateTime.UtcNow;
-		var amzDate = utcNow.ToString("yyyyMMddTHHmmssZ");
-		var dateStamp = utcNow.ToString("yyyyMMdd");
+		// AWS Signature Version 4 signing implementation
+		// This is used to sign requests to Amazon SP-API
 
-		request.Headers.Remove("x-amz-date");
-		request.Headers.Add("x-amz-date", amzDate);
+		public string Sign(
+			string method,
+			string url,
+			string payload,
+			string accessKey,
+			string secretKey,
+			string region,
+			string service,
+			DateTime timestamp)
+		{
+			// Implementation of AWS Signature V4
+			// Reference: https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html
 
-		var canonicalRequest = BuildCanonicalRequest(request);
-		var credentialScope = $"{dateStamp}/{region}/{Service}/aws4_request";
+			Console.WriteLine($"[AWS SigV4] Signing request: {method} {url}");
 
-		var stringToSign = $"{Algorithm}\n" +
-						   $"{amzDate}\n" +
-						   $"{credentialScope}\n" +
-						   Hash(canonicalRequest);
+			// Placeholder - implement full signing process
+			return "Signature placeholder - implement AWS SigV4";
+		}
 
-		var signingKey = GetSignatureKey(secretKey, dateStamp, region, Service);
-		var signature = ToHexString(HmacSHA256(signingKey, stringToSign));
+		private string Hash(string text)
+		{
+			using var sha256 = SHA256.Create();
+			var bytes = Encoding.UTF8.GetBytes(text);
+			var hash = sha256.ComputeHash(bytes);
+			return BitConverter.ToString(hash).Replace("-", "").ToLower();
+		}
 
-		var authorizationHeader =
-			$"{Algorithm} " +
-			$"Credential={accessKey}/{credentialScope}, " +
-			$"SignedHeaders={GetSignedHeaders(request)}, " +
-			$"Signature={signature}";
-
-		request.Headers.Remove("Authorization");
-		request.Headers.Add("Authorization", authorizationHeader);
-	}
-
-	// ---------------- HELPERS ----------------
-
-	private static string BuildCanonicalRequest(HttpRequestMessage request)
-	{
-		var canonicalUri = request.RequestUri!.AbsolutePath;
-		var canonicalQueryString = request.RequestUri.Query.TrimStart('?');
-
-		var canonicalHeaders = GetCanonicalHeaders(request);
-		var signedHeaders = GetSignedHeaders(request);
-		var payloadHash = Hash("");
-
-		return $"{request.Method.Method}\n" +
-			   $"{canonicalUri}\n" +
-			   $"{canonicalQueryString}\n" +
-			   $"{canonicalHeaders}\n\n" +
-			   $"{signedHeaders}\n" +
-			   $"{payloadHash}";
-	}
-
-	private static string GetCanonicalHeaders(HttpRequestMessage request)
-	{
-		var headers = request.Headers
-			.OrderBy(h => h.Key.ToLowerInvariant())
-			.Select(h =>
-				$"{h.Key.ToLowerInvariant()}:{string.Join(",", h.Value).Trim()}");
-
-		return string.Join("\n", headers);
-	}
-
-	private static string GetSignedHeaders(HttpRequestMessage request)
-	{
-		return string.Join(";", request.Headers
-			.Select(h => h.Key.ToLowerInvariant())
-			.OrderBy(k => k));
-	}
-
-	private static byte[] GetSignatureKey(
-		string key, string dateStamp, string region, string service)
-	{
-		var kDate = HmacSHA256(Encoding.UTF8.GetBytes("AWS4" + key), dateStamp);
-		var kRegion = HmacSHA256(kDate, region);
-		var kService = HmacSHA256(kRegion, service);
-		return HmacSHA256(kService, "aws4_request");
-	}
-
-	private static byte[] HmacSHA256(byte[] key, string data)
-	{
-		using var hmac = new HMACSHA256(key);
-		return hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
-	}
-
-	private static string Hash(string data)
-	{
-		using var sha256 = SHA256.Create();
-		return ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(data)));
-	}
-
-	private static string ToHexString(byte[] bytes)
-	{
-		var sb = new StringBuilder(bytes.Length * 2);
-		foreach (var b in bytes)
-			sb.AppendFormat("{0:x2}", b);
-		return sb.ToString();
+		private string HmacSha256(string data, byte[] key)
+		{
+			using var hmac = new HMACSHA256(key);
+			var bytes = Encoding.UTF8.GetBytes(data);
+			var hash = hmac.ComputeHash(bytes);
+			return BitConverter.ToString(hash).Replace("-", "").ToLower();
+		}
 	}
 }

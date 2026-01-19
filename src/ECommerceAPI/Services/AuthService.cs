@@ -1,228 +1,143 @@
-﻿using BCrypt.Net;
-using ECommerceAPI.Data;
+﻿using ECommerceAPI.Data;
 using ECommerceAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
-namespace ECommerceAPI.Services;
-
-public interface IAuthService
+namespace ECommerceAPI.Services
 {
-	Task<AuthResponse> RegisterAsync(RegisterRequest request);
-	Task<AuthResponse> LoginAsync(LoginRequest request);
-	Task<User?> GetUserByIdAsync(int userId);
-}
-
-public class AuthService : IAuthService
-{
-	private readonly ApplicationDbContext _context;
-	private readonly IConfiguration _configuration;
-
-	public AuthService(ApplicationDbContext context, IConfiguration configuration)
+	public class AuthService : IAuthService
 	{
-		_context = context;
-		_configuration = configuration;
-	}
+		private readonly ApplicationDbContext _context;
+		private readonly IConfiguration _configuration;
 
-	// ========================= REGISTER =========================
-
-	public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
-	{
-		try
+		public AuthService(ApplicationDbContext context, IConfiguration configuration)
 		{
-			// 1️⃣ Duplicate email check
-			if (await _context.Users.AnyAsync(x => x.Email == request.Email))
+			_context = context;
+			_configuration = configuration;
+		}
+
+		public async Task<(bool Success, string Message, string? Token, object? User)> RegisterAsync(string email, string password, string role, string fullName, string? storeName = null, string? description = null)
+		{
+			if (await _context.Users.AnyAsync(u => u.Email == email))
 			{
-				return new AuthResponse
-				{
-					Success = false,
-					Message = "Email already exists"
-				};
+				return (false, "Email already exists.", null, null);
 			}
 
-			// 2️⃣ Create user
 			var user = new User
 			{
-				Email = request.Email,
-				PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-				Role = request.Role,
-				FullName = request.FullName,
-				IsActive = true,
-				CreatedAt = DateTime.UtcNow
+				Email = email,
+				PasswordHash = HashPassword(password),
+				Role = role,
+				CreatedAt = DateTime.UtcNow,
+				IsActive = true
 			};
 
 			_context.Users.Add(user);
-			await _context.SaveChangesAsync(); // 🔥 User must be saved first
+			await _context.SaveChangesAsync();
 
-			// 3️⃣ Create SellerProfile ONLY if role = Seller AND not exists
-			if (request.Role.Equals("Seller", StringComparison.OrdinalIgnoreCase))
+			if (role == "Seller")
 			{
-				var existingSellerProfile = await _context.SellerProfiles
-					.FirstOrDefaultAsync(x => x.UserId == user.Id);
-
-				if (existingSellerProfile == null)
+				var sellerProfile = new SellerProfile
 				{
-					var sellerProfile = new SellerProfile
-					{
-						UserId = user.Id,
-						CreatedAt = DateTime.UtcNow,
-						IsAmazonConnected = false
-					};
-
-					_context.SellerProfiles.Add(sellerProfile);
-					await _context.SaveChangesAsync();
-				}
+					UserId = user.UserId,
+					BusinessName = storeName ?? email.Split('@')[0],
+					Description = description,
+					IsAmazonConnected = false
+				};
+				_context.SellerProfiles.Add(sellerProfile);
+				await _context.SaveChangesAsync();
 			}
 
-			// 4️⃣ Generate JWT
 			var token = GenerateJwtToken(user);
 
-			return new AuthResponse
+			return (true, "Registration successful.", token, new
 			{
-				Success = true,
-				Message = "Registration successful",
-				Token = token,
-				User = new UserDto
-				{
-					Id = user.Id,
-					Email = user.Email,
-					Role = user.Role,
-					FullName = user.FullName
-				}
-			};
+				user.UserId,
+				user.Email,
+				user.Role
+			});
 		}
-		catch (Exception ex)
-		{
-			Console.WriteLine("REGISTER ERROR: " + ex.Message);
-			if (ex.InnerException != null)
-			{
-				Console.WriteLine("INNER: " + ex.InnerException.Message);
-			}
 
-			return new AuthResponse
-			{
-				Success = false,
-				Message = "Registration failed due to server error"
-			};
-		}
-	}
-
-	// ========================= LOGIN =========================
-
-	public async Task<AuthResponse> LoginAsync(LoginRequest request)
-	{
-		try
+		public async Task<(bool Success, string Message, string? Token, object? User)> LoginAsync(string email, string password)
 		{
 			var user = await _context.Users
-				.Include(x => x.SellerProfile)
-				.FirstOrDefaultAsync(x => x.Email == request.Email);
+				.FirstOrDefaultAsync(u => u.Email == email && u.IsActive);
 
-			if (user == null)
+			if (user == null || !VerifyPassword(password, user.PasswordHash))
 			{
-				return new AuthResponse
-				{
-					Success = false,
-					Message = "Invalid email or password"
-				};
-			}
-
-			if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-			{
-				return new AuthResponse
-				{
-					Success = false,
-					Message = "Invalid email or password"
-				};
-			}
-
-			if (!user.IsActive)
-			{
-				return new AuthResponse
-				{
-					Success = false,
-					Message = "Account is inactive"
-				};
+				return (false, "Invalid credentials.", null, null);
 			}
 
 			var token = GenerateJwtToken(user);
 
-			return new AuthResponse
+			return (true, "Login successful.", token, new
 			{
-				Success = true,
-				Message = "Login successful",
-				Token = token,
-				User = new UserDto
-				{
-					Id = user.Id,
-					Email = user.Email,
-					Role = user.Role,
-					FullName = user.FullName
-				}
-			};
+				user.UserId,
+				user.Email,
+				user.Role
+			});
 		}
-		catch (Exception ex)
+
+		public async Task<User?> GetUserByIdAsync(int userId)
 		{
-			Console.WriteLine("LOGIN ERROR: " + ex.Message);
-			if (ex.InnerException != null)
+			return await _context.Users
+				.Include(u => u.SellerProfile)
+				.FirstOrDefaultAsync(u => u.UserId == userId);
+		}
+
+		private string HashPassword(string password)
+		{
+			using var sha256 = SHA256.Create();
+			var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+			return Convert.ToBase64String(hashedBytes);
+		}
+
+		private bool VerifyPassword(string password, string hash)
+		{
+			return HashPassword(password) == hash;
+		}
+
+		private string GenerateJwtToken(User user)
+		{
+			var jwtSettings = _configuration.GetSection("JwtSettings");
+			var secretKey = jwtSettings["Secret"];
+
+			// Use default if not configured
+			if (string.IsNullOrEmpty(secretKey) || secretKey.Length < 32)
 			{
-				Console.WriteLine("INNER: " + ex.InnerException.Message);
+				secretKey = "YourSuperSecretKeyThatIsAtLeast32CharactersLong!";
 			}
 
-			return new AuthResponse
+			var issuer = jwtSettings["Issuer"] ?? "ECommerceAPI";
+			var audience = jwtSettings["Audience"] ?? "ECommerceAPIUsers";
+
+			var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
+			var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+			var claims = new[]
 			{
-				Success = false,
-				Message = "Login failed due to server error"
+				new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+				new Claim(ClaimTypes.Email, user.Email),
+				new Claim(ClaimTypes.Role, user.Role),
+				new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
+				new Claim(JwtRegisteredClaimNames.Email, user.Email),
+				new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
 			};
+
+			var token = new JwtSecurityToken(
+				issuer: issuer,
+				audience: audience,
+				claims: claims,
+				notBefore: DateTime.UtcNow,
+				expires: DateTime.UtcNow.AddHours(24),
+				signingCredentials: credentials
+			);
+
+			return new JwtSecurityTokenHandler().WriteToken(token);
 		}
-	}
-
-	// ========================= GET USER =========================
-
-	public async Task<User?> GetUserByIdAsync(int userId)
-	{
-		return await _context.Users
-			.Include(x => x.SellerProfile)
-			.FirstOrDefaultAsync(x => x.Id == userId);
-	}
-
-	// ========================= JWT =========================
-
-	private string GenerateJwtToken(User user)
-	{
-		var jwtSettings = _configuration.GetSection("JwtSettings");
-
-		var secret = jwtSettings["Secret"];
-		if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
-		{
-			throw new Exception("JWT Secret not configured properly");
-		}
-
-		var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-		var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-		var claims = new List<Claim>
-		{
-			new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-			new Claim(ClaimTypes.Email, user.Email),
-			new Claim(ClaimTypes.Role, user.Role),
-			new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-		};
-
-		var issuer = jwtSettings["Issuer"];
-		var audience = jwtSettings["Audience"];
-		var expiryMinutes = Convert.ToDouble(jwtSettings["ExpiryInMinutes"] ?? "60");
-
-		var token = new JwtSecurityToken(
-			issuer: issuer,
-			audience: audience,
-			claims: claims,
-			expires: DateTime.UtcNow.AddMinutes(expiryMinutes),
-			signingCredentials: credentials
-		);
-
-		return new JwtSecurityTokenHandler().WriteToken(token);
 	}
 }

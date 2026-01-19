@@ -1,28 +1,21 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace ECommerceAPI.Models;
-
-public class User
+﻿namespace ECommerceAPI.Models
 {
-	[Key]
-	public int Id { get; set; }
+	public class User
+	{
+		public int Id { get; set; }
+		public int UserId => Id; // Alias for compatibility
 
-	[Required, EmailAddress]
-	public string Email { get; set; } = string.Empty;
+		public string Email { get; set; } = string.Empty;
+		public string PasswordHash { get; set; } = string.Empty;
+		public string Role { get; set; } = "Buyer";
+		public string UserType => Role; // Alias for compatibility
 
-	[Required]
-	public string PasswordHash { get; set; } = string.Empty;
+		public string FullName { get; set; } = string.Empty;
+		public bool IsActive { get; set; } = true;
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-	[Required]
-	public string Role { get; set; } = string.Empty; // Seller / Buyer
-
-	public string? FullName { get; set; }
-
-	public bool IsActive { get; set; } = true;
-
-	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-	// Navigation
-	public SellerProfile? SellerProfile { get; set; }
-	public ICollection<Order> Orders { get; set; } = new List<Order>();
+		// Navigation properties
+		public SellerProfile? SellerProfile { get; set; }
+		public ICollection<Order> Orders { get; set; } = new List<Order>();
+	}
 }

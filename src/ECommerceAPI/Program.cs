@@ -9,61 +9,109 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ================= BASIC DEBUG =================
 Console.WriteLine("========================================");
 Console.WriteLine($"Environment: {builder.Environment.EnvironmentName}");
-Console.WriteLine($"Directory: {Directory.GetCurrentDirectory()}");
+Console.WriteLine($"ContentRoot: {builder.Environment.ContentRootPath}");
 Console.WriteLine("========================================");
 
-// ================= SERVICES =================
+// --------------------------------------------------
+// Controllers
+// --------------------------------------------------
 builder.Services.AddControllers();
 
-// ================= DATABASE =================
+// --------------------------------------------------
+// Database
+// --------------------------------------------------
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrWhiteSpace(connectionString))
-{
-	Console.WriteLine("[WARNING] DefaultConnection not found, using fallback");
-	connectionString =
-		"Server=DESKTOP-410L5DQ\\LOCALHOST;Database=ECommerceDB;User Id=sa;Password=Esoft@1234;TrustServerCertificate=True;Encrypt=False;";
-}
 
-
+//if (string.IsNullOrWhiteSpace(connectionString))
+//{
+//	throw new Exception("❌ Connection string 'DefaultConnection' not found in appsettings.json");
+//}
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-	options.UseSqlServer(connectionString));
+{
+	options.UseSqlServer(connectionString);
+	options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
+});
 
-// ================= JWT =================
+Console.WriteLine("✅ Database configured");
+
+// --------------------------------------------------
+// JWT AUTHENTICATION (FINAL)
+// --------------------------------------------------
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 
-var secret = jwtSettings["Secret"];
+var secretKey = jwtSettings["Secret"];
 var issuer = jwtSettings["Issuer"];
 var audience = jwtSettings["Audience"];
 
-if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
-{
-	throw new Exception("JWT Secret not configured or too short");
-}
+if (string.IsNullOrWhiteSpace(secretKey) || secretKey.Length < 32)
+	throw new Exception("❌ JwtSettings:Secret missing or too short");
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-.AddJwtBearer(options =>
-{
-	options.TokenValidationParameters = new TokenValidationParameters
+if (string.IsNullOrWhiteSpace(issuer))
+	throw new Exception("❌ JwtSettings:Issuer missing");
+
+if (string.IsNullOrWhiteSpace(audience))
+	throw new Exception("❌ JwtSettings:Audience missing");
+
+Console.WriteLine($"[JWT] Secret Length: {secretKey.Length}");
+Console.WriteLine($"[JWT] Issuer: {issuer}");
+Console.WriteLine($"[JWT] Audience: {audience}");
+
+builder.Services
+	.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+	.AddJwtBearer(options =>
 	{
-		ValidateIssuer = true,
-		ValidateAudience = true,
-		ValidateLifetime = true,
-		ValidateIssuerSigningKey = true,
-		ValidIssuer = issuer,
-		ValidAudience = audience,
-		IssuerSigningKey = new SymmetricSecurityKey(
-			Encoding.UTF8.GetBytes(secret)),
-		ClockSkew = TimeSpan.Zero
-	};
-});
+		options.RequireHttpsMetadata = false;
+		options.SaveToken = true;
 
-// ================= AMAZON =================
+		options.TokenValidationParameters = new TokenValidationParameters
+		{
+			ValidateIssuer = true,
+			ValidateAudience = true,
+			ValidateLifetime = true,
+			ValidateIssuerSigningKey = true,
+
+			ValidIssuer = issuer,
+			ValidAudience = audience,
+
+			IssuerSigningKey = new SymmetricSecurityKey(
+				Encoding.UTF8.GetBytes(secretKey)
+			),
+
+			ClockSkew = TimeSpan.Zero
+		};
+
+		options.Events = new JwtBearerEvents
+		{
+			OnAuthenticationFailed = context =>
+			{
+				Console.WriteLine($"❌ JWT Auth Failed: {context.Exception.Message}");
+				return Task.CompletedTask;
+			},
+			OnTokenValidated = context =>
+			{
+				var userId = context.Principal?
+					.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+				var role = context.Principal?
+					.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+				Console.WriteLine($"✅ JWT Validated | UserId: {userId}, Role: {role}");
+				return Task.CompletedTask;
+			}
+		};
+	});
+
+builder.Services.AddAuthorization();
+Console.WriteLine("✅ JWT Authentication configured");
+
+// --------------------------------------------------
+// Amazon Services
+// --------------------------------------------------
 builder.Services.Configure<AmazonSettings>(
-	builder.Configuration.GetSection("Amazon"));
+	builder.Configuration.GetSection("AmazonSettings"));
 
 builder.Services.AddHttpClient<AmazonTokenService>();
 builder.Services.AddHttpClient<AmazonSpApiService>();
@@ -73,19 +121,39 @@ builder.Services.AddScoped<AmazonTokenService>();
 builder.Services.AddScoped<AmazonSpApiService>();
 builder.Services.AddScoped<AwsSigV4Signer>();
 
-// ================= APP SERVICES =================
+Console.WriteLine("✅ Amazon services registered");
+
+// --------------------------------------------------
+// Application Services
+// --------------------------------------------------
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAmazonSellerService, AmazonSellerService>();
 builder.Services.AddScoped<IAmazonBuyerService, AmazonBuyerService>();
 
-// ================= CORS =================
-builder.Services.AddCors(options =>
+Console.WriteLine("✅ Application services registered");
+
+// --------------------------------------------------
+// Session & CORS
+// --------------------------------------------------
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
 {
-	options.AddPolicy("AllowAll", p =>
-		p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+	options.IdleTimeout = TimeSpan.FromMinutes(30);
+	options.Cookie.HttpOnly = true;
+	options.Cookie.IsEssential = true;
 });
 
-// ================= SWAGGER =================
+builder.Services.AddCors(options =>
+{
+	options.AddPolicy("AllowAll", policy =>
+		policy.AllowAnyOrigin()
+			  .AllowAnyMethod()
+			  .AllowAnyHeader());
+});
+
+// --------------------------------------------------
+// Swagger
+// --------------------------------------------------
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -98,10 +166,11 @@ builder.Services.AddSwaggerGen(c =>
 	c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
 	{
 		Name = "Authorization",
-		Type = SecuritySchemeType.ApiKey,
+		Type = SecuritySchemeType.Http,
 		Scheme = "Bearer",
+		BearerFormat = "JWT",
 		In = ParameterLocation.Header,
-		Description = "Bearer {token}"
+		Description = "Paste JWT token only"
 	});
 
 	c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -122,14 +191,9 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// ================= MIGRATION =================
-using (var scope = app.Services.CreateScope())
-{
-	var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-	db.Database.Migrate();
-}
-
-// ================= MIDDLEWARE =================
+// --------------------------------------------------
+// Middleware
+// --------------------------------------------------
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -139,9 +203,22 @@ app.UseSwaggerUI(c =>
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
+app.UseSession();
+
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
 
-Console.WriteLine("API STARTED SUCCESSFULLY");
+app.MapGet("/health", () => Results.Ok(new
+{
+	status = "healthy",
+	time = DateTime.UtcNow
+}));
+
+Console.WriteLine("========================================");
+Console.WriteLine("✅ API STARTED SUCCESSFULLY");
+Console.WriteLine("📍 Swagger: https://localhost:7050");
+Console.WriteLine("========================================");
+
 app.Run();
